@@ -11,75 +11,75 @@
 import random
 import simpy
 
-RANDOM_SEED=42
-NEW_PROCESS=5 #Cantidad de procesos
-INTERVAL_PROCESS=10.0 #Generar procesos con este intervalo entre procesos
-def source(env,number,interval,RAM,CPU,WAITING):
-    #Source genera procesos al azar, de acuerdo a una distribución exponencial
-    #   de acuerdo al intervalo recibido
-    #RAM: es el recurso de memoria que se emplea para que el proceso tome
-    #   la memoria que necesita
-    #CPU: es el recurso de memoria que signa el CPU para correr al proceso
-    for i in range(number):
-        #Cada proceso tiene un numero al azar de instrucciones a ejecutar
+randomSeed=42	#Random seed para que siempre se genere el mismo patrón de random
+cantProcesos=5  #Cantidad de procesos a ejecutar por el Sistema Operativo
+intervaloDeProcesos=10.0 #Generar procesos con este intervalo entre procesos
+#Ram es la cantidad de memoria
+#Cpu es el recurso para correr los procesos
+def source(env,cantProcesos,intervalo,ram,cpu,waiting):
+    for i in range(cantProcesos):
+        #Se le asigna al proceso una cantidad random de instrucciones entre 1 y 10
         instrucciones=random.randint(1,10)
-        #Cada proceso necesita cantidad de memoria RAM
+        #Se le asigna al proceso una cantidad random de memoria ram necesaria entre 1 y 10
         memoria=random.randint(1,10)
-        c=proceso(env,'ID%03d'%i,memoria,RAM,CPU,WAITING,instrucciones)
-        env.process(c)
-        t=random.expovariate(1.0/interval)
+        correrProceso=proceso(env,'Número de Proceso: %03d'%i,memoria,ram,cpu,waiting,instrucciones)
+        env.process(correrProceso)
+        t=random.expovariate(1.0/intervalo)
         yield env.timeout(t)
-        
-def proceso(env,processID,memoria,RAM,CPU,WAITING,instrucciones):
-    #El proceso pasa por todas sus etapas, y luego termina su ejecución
-    arrive=env.now
-    print('%7.4f %s: NEW (esperando RAM %s), RAM disponible %s'%(arrive,processID,RAM))
+#Función que corre cada proceso, con cada especificación propia
+def proceso(env,noProceso,memoria,ram,cpu,waiting,instrucciones):
+	#Variable para llevar control del tiempo de corrida total
+    global tiempoTotal
+    #Variable para el tiempo de llegada del Proceso
+    tiempoLlegada=env.now
+    print('Momento:  %7.4f , %s, Memoria necesaria: %s, Memoria disponible: %s'%(tiempoLlegada,noProceso,instrucciones,ram.level))
+    #Se necesita memoria para pasar a ready
+    with ram.get(memoria) as req:
+        yield req
+    espera=env.now-tiempoLlegada
+    print('Momento:  %7.4f , %s, Ready espero ram %6.3f'%(env.now,noProceso,espera))
 
-    #Estamos en NEW y se necesita memoria para pasar a READY
-    with RAM.get(memoria) as req:
-        yield req #Esperar por memoria RAM
-    wait=env.req-arrive
-    print('%7.4f %s: READY espero RAM %6.3f'%(env.now,processID,wait))
-
-    #Se ejecuta el proceso, mientras tenga instrucciones por ejecutar
+    #Se ejecuta el proceso, se ejecutan de 3 en 3
     while instrucciones>0:
-          #Estamos en READY y se necesita utilizar un CPU
-          with CPU.request() as reqCPU:
-              yield reqCPU #Esperamos por CPU
-              print('%7.4f %s: RUNNING instrucciones %6.3f'%(arrive,processID))
-              yield env.timeout(1) #Tiempo dedicado por el CPU
-              #Disminuye el tiempo por el CPU e Instrucciones faltantes
+          #Se necesita usar el cpu
+          with cpu.request() as reqCpu:
+              yield reqCpu
+              print('Momento:  %7.4f , %s, Running instrucciones %6.3f'%(env.now,noProceso,instrucciones))
+              yield env.timeout(1) #Tiempo dedicado por el cpu
+              #Se le restan las 3 instrucciones procesadas
               if instrucciones>3:
                   instrucciones=instrucciones-3
               else:
                   instrucciones=0
-
-              #Se terminó el tiempo que el CPU dedico a este proceso
-              #Si aún existe instrucciones a realizar pasar a READY O WAITING
+              #Si aún quedan instrucciones por procesar se decide si pasar a Ready o Waiting
               if instrucciones>0:
-                  siguiente=random.choice(["ready","waiting"])
-                  if siguiente=="waiting":
-                      with WAITING.request() as reqWAITING:
-                          yield reqWAITING #Esperar por I/O
-                          print('%7.4f %s: WAITING'%(env.now,processID))
-                          yield env.timeout(1) #Tiempo dedicado a hacer I/O
-                  #Ahora se pasa a hacer nuevamente cola para esperar a CPU
-                  print('%7.4f %s: READY'%(env.now,processID))
+                  siguiente=random.choice([0,1])
+                  if siguiente==0:
+					#Se necesita esperar por I/O
+                      with waiting.request() as reqWaiting:
+                          yield reqWaiting
+                          print('Momento:  %7.4f , %s, Waiting'%(env.now,noProceso))
+                          yield env.timeout(1)
+                  #Se vuelve a esperar por CPU
+                  print('Momento:  %7.4f , %s, Ready'%(env.now,noProceso))
     #Se termina el proceso
-    tiempoProceso=env.now-arrive
-    print('%7.4f %s: TERMINATED tiempo ejecucion %s'%(env.now,processID,tiempoProceso))
-    #Regresar la memoria
-    with RAM.put(memoria) as reqDevolverRAM:
-        yield reqDevolverRAM   #Se regresa la memoria utilizada
-        print('%7.4f %s: Regresando RAM %s'%(env.now,processID,memoria))
-#Setup and start the simulation
+    tiempoProceso=env.now-tiempoLlegada
+    print('Momento:  %7.4f , %s, Terminated, Tiempo de ejecución %s'%(env.now,noProceso,tiempoProceso))
+    #Se regresa la memoria que se utilizó
+    with ram.put(memoria) as reqDevolverRam:
+        yield reqDevolverRam
+        print('Momento:  %7.4f , %s, Regresando Ram %s'%(env.now,noProceso,memoria))
+    tiempoTotal = tiempoTotal + (env.now - tiempoLlegada)
+#Se configura el ambiente de simulación y se inicializan las variables
 print ('Sistema Operativo')
-random.seed(RANDOM_SEED)
+random.seed(randomSeed)
 env=simpy.Environment()
 
 #Start processes and run
-CPU=simpy.Resource(env,capacity=1) #Cantidad de CPU
-RAM=simpy.Container(env,init=100,capacity=100) #Cantidad de RAM
-WAITING= simpy.Resource(env,capacity=1) #Cola de atencion de I/O
-env.process(source(env,NEW_PROCESS,INTERVAL_PROCESS,RAM,CPU,WAITING))
+tiempoTotal = 0
+cpu=simpy.Resource(env,capacity=1) #Cantidad de cpu
+ram=simpy.Container(env,init=100,capacity=100) #Cantidad de ram
+waiting= simpy.Resource(env,capacity=1) #Cola de atencion de I/O
+env.process(source(env,cantProcesos,intervaloDeProcesos,ram,cpu,waiting))
 env.run()        
+print "Tiempo de Ejecución: " , tiempoTotal, ": Promedio del tiempo por Proceso: " , tiempoTotal/5.0
