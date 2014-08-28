@@ -12,7 +12,7 @@ import random
 import simpy
 
 randomSeed=42	#Random seed para que siempre se genere el mismo patrón de random
-cantProcesos=200 #Cantidad de procesos a ejecutar por el Sistema Operativo
+cantProcesos=25 #Cantidad de procesos a ejecutar por el Sistema Operativo
 intervaloDeProcesos=10 #Generar procesos con este intervalo entre procesos
 #Ram es la cantidad de memoria
 #Cpu es el recurso para correr los procesos
@@ -30,6 +30,7 @@ def source(env,cantProcesos,intervalo,ram,cpu,waiting):
 def proceso(env,noProceso,memoria,ram,cpu,waiting,instrucciones):
 	#Variable para llevar control del tiempo de corrida total
     global tiempoTotal
+    numInst = 3
     #Variable para el tiempo de llegada del Proceso
     tiempoLlegada=env.now
     print('Momento:  %7.4f , %s, Memoria necesaria: %s, Memoria disponible: %s'%(tiempoLlegada,noProceso,instrucciones,ram.level))
@@ -47,8 +48,8 @@ def proceso(env,noProceso,memoria,ram,cpu,waiting,instrucciones):
               print('Momento:  %7.4f , %s, Running instrucciones %6.3f'%(env.now,noProceso,instrucciones))
               yield env.timeout(1) #Tiempo dedicado por el cpu
               #Se le restan las 3 instrucciones procesadas
-              if instrucciones>3:
-                  instrucciones=instrucciones-3
+              if instrucciones>numInst:
+                  instrucciones=instrucciones-numInst
               else:
                   instrucciones=0
               #Si aún quedan instrucciones por procesar se decide si pasar a Ready o Waiting
@@ -78,7 +79,7 @@ env=simpy.Environment()
 #Start processes and run
 tiempoTotal = 0
 cpu=simpy.Resource(env,capacity=1) #Cantidad de cpu
-ram=simpy.Container(env,init=200,capacity=200) #Cantidad de ram
+ram=simpy.Container(env,init=100,capacity=100) #Cantidad de ram
 waiting= simpy.Resource(env,capacity=1) #Cola de atencion de I/O
 env.process(source(env,cantProcesos,intervaloDeProcesos,ram,cpu,waiting))
 env.run()        
